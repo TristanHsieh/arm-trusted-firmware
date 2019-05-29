@@ -17,15 +17,20 @@
 #define	PRR_CUT_MASK		(0x000000FF)
 #define	PRR_PRODUCT_H3_VER_10	(0x00004F00)
 #define	PRR_PRODUCT_E3		(0x00005700)
+#define	PRR_PRODUCT_D3		(0x00005800)
 
 /* module stop */
 #define	CPG_BASE		(0xE6150000)
+#define	CPG_SMSTPCR2		(0x0138)
 #define	CPG_SMSTPCR3		(0x013C)
+#define CPG_MSTPSR2		(0x0040)
 #define	CPG_MSTPSR3		(0x0048)
+#define	MSTP207			(1 << 7)
 #define	MSTP310			(1 << 10)
 #define	CPG_CPGWPR		(0x0900)
 
 /* scif */
+#define	SCIF0_BASE		(0xE6E60000)
 #define	SCIF2_BASE		(0xE6E88000)
 #define	SCIF_SCSMR		(0x00)
 #define	SCIF_SCBRR		(0x04)
@@ -39,6 +44,18 @@
 #define	SCIF_SCLSR		(0x24)
 #define	SCIF_DL			(0x30)
 #define	SCIF_CKS		(0x34)
+
+#if RCAR_LSI == RCAR_V3M
+#define SCIF_BASE		SCIF0_BASE
+#define CPG_SMSTPCR		CPG_SMSTPCR2
+#define CPG_MSTPSR		CPG_MSTPSR2
+#define MSTP			MSTP207
+#else
+#define SCIF_BASE		SCIF2_BASE
+#define CPG_SMSTPCR		CPG_SMSTPCR3
+#define CPG_MSTPSR		CPG_MSTPSR3
+#define MSTP			MSTP310
+#endif
 
 /* mode pin */
 #define	RST_MODEMR		(0xE6160060)
@@ -60,6 +77,7 @@
 					 SCSMR_STOP_1 +		\
 					 SCSMR_CKS_DIV1)
 #define	SCBRR_115200BPS		(17)
+#define	SCBRR_115200BPSON	(16)
 #define	SCBRR_115200BPS_E3_SSCG	(15)
 #define	SCBRR_230400BPS		(8)
 
@@ -75,6 +93,8 @@
 #if SCIF_CLK == SCIF_EXTARNAL_CLK
 #define	SCSCR_CKE_INT_CLK	(SCSCR_CKE_BRG)
 #else
+#define	SCFSR_TEND_MASK		(1 << 6)
+#define	SCFSR_TEND_TRANS_END	(0x0040)
 #define	SCSCR_CKE_INT_CLK	(SCSCR_CKE_INT)
 #endif
 #define	SCFSR_INIT_DATA		(0x0000)
@@ -148,17 +168,17 @@ endfunc console_uninit
 	 */
 func console_core_init
 	ldr	x0, =CPG_BASE
-	ldr	w1, [x0, #CPG_SMSTPCR3]
-	and	w1, w1, #~MSTP310		/* MSTP310=0 */
+	ldr	w1, [x0, #CPG_SMSTPCR]
+	and	w1, w1, #~MSTP
 	mvn	w2, w1
 	str	w2, [x0, #CPG_CPGWPR]
-	str	w1, [x0, #CPG_SMSTPCR3]
+	str	w1, [x0, #CPG_SMSTPCR]
 5:
-	ldr w1, [x0, #CPG_MSTPSR3]
-	and w1, w1, #MSTP310
+	ldr w1, [x0, #CPG_MSTPSR]
+	and w1, w1, #MSTP
 	cbnz w1, 5b
 
-	ldr	x0, =SCIF2_BASE
+	ldr	x0, =SCIF_BASE
 	/* Clear bits TE and RE in SCSCR to 0 */
 	mov	w1, #(SCSCR_TE_DIS + SCSCR_RE_DIS)
 	strh	w1, [x0, #SCIF_SCSCR]
@@ -190,21 +210,28 @@ func console_core_init
 	cmp	w1, w2
 	beq	3f
 	and	w1, w1, #PRR_PRODUCT_MASK
+	mov	w2, #PRR_PRODUCT_D3
+	cmp	w1, w2
+	beq	4f
+	and	w1, w1, #PRR_PRODUCT_MASK
 	mov	w2, #PRR_PRODUCT_E3
 	cmp	w1, w2
-	bne	4f
+	bne	5f
 
 	ldr	x1, =RST_MODEMR
 	ldr	w1, [x1]
 	and	w1, w1, #MODEMR_MD12
 	mov	w2, #MODEMR_MD12
 	cmp	w1, w2
-	bne	4f
+	bne	5f
 
 	mov	w1, #SCBRR_115200BPS_E3_SSCG
 	b	2f
-4:
+5:
 	mov	w1, #SCBRR_115200BPS
+	b	2f
+4:
+	mov	w1, #SCBRR_115200BPSON
 	b	2f
 3:
 	mov	w1, #SCBRR_230400BPS
@@ -261,7 +288,7 @@ endfunc console_putc
 	 * --------------------------------------------------------
 	 */
 func console_core_putc
-	ldr	x1, =SCIF2_BASE
+	ldr	x1, =SCIF_BASE
 	cmp	w0, #0xA
 	/* Prepend '\r' to '\n' */
 	bne	2f
@@ -280,6 +307,11 @@ func console_core_putc
 	cmp	w2, #16
 	bcs	2b
 	strb	w0, [x1, #SCIF_SCFTDR]
+
+	/* Clear TEND flag */
+	ldrh	w2, [x1, #SCIF_SCFSR]
+	and	w2, w2, #~SCFSR_TEND_MASK
+	strh	w2, [x1, #SCIF_SCFSR]
 
 	ret
 endfunc console_core_putc
@@ -307,19 +339,15 @@ endfunc console_getc
 	 * ---------------------------------------------
 	 */
 func console_flush
-	ldr	x0, =SCIF2_BASE
+	ldr	x0, =SCIF_BASE
 1:
-	ldrh	w1, [x0, #SCIF_SCFDR]
-	ubfx	w1, w1, #8, #5
-	cmp	w1, #0
+	/* Check TEND flag */
+	ldrh	w1, [x0, #SCIF_SCFSR]
+	and	w1, w1, #SCFSR_TEND_MASK
+	cmp	w1, #SCFSR_TEND_TRANS_END
 	bne	1b
 
-	mov x0, #100
-	mov x3, x30
-	bl rcar_micro_delay
-	mov x30, x3
-
-	ldr	x0, =SCIF2_BASE
+	ldr	x0, =SCIF_BASE
 	ldrh	w1, [x0, #SCIF_SCSCR]
 	and	w1, w1, #~(SCSCR_TE_EN + SCSCR_RE_EN)
 	strh	w1, [x0, #SCIF_SCSCR]

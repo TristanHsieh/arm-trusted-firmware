@@ -5,9 +5,10 @@
  */
 
 #include <arch_helpers.h>
-#include <debug.h>
-#include <gicv2.h>
-#include <mmio.h>
+#include <common/debug.h>
+#include <drivers/arm/gicv2.h>
+#include <lib/mmio.h>
+
 #include "rcar_def.h"
 
 extern void gicd_set_icenabler(uintptr_t base, unsigned int id);
@@ -48,7 +49,11 @@ extern void gicd_set_icenabler(uintptr_t base, unsigned int id);
 #define WTCSRA_INIT_DATA		(WTCSRA_UPPER_BYTE + 0x0FU)
 #define WTCSRB_INIT_DATA		(WTCSRB_UPPER_BYTE + 0x21U)
 
+#if RCAR_LSI == RCAR_D3
+#define WTCNT_COUNT_8p13k		(0x10000U - 40760U)
+#else
 #define WTCNT_COUNT_8p13k		(0x10000U - 40687U)
+#endif
 #define WTCNT_COUNT_8p13k_H3VER10	(0x10000U - 20343U)
 #define WTCNT_COUNT_8p22k		(0x10000U - 41115U)
 #define WTCNT_COUNT_7p81k		(0x10000U - 39062U)
@@ -132,7 +137,11 @@ void rcar_swdt_release(void)
 	    (ARM_IRQ_SEC_WDT & ~ITARGET_MASK);
 	uint32_t i;
 
+	/* Disable FIQ interrupt */
 	write_daifset(DAIF_FIQ_BIT);
+	/* FIQ interrupts are not taken to EL3 */
+	write_scr_el3(read_scr_el3() & ~SCR_FIQ_BIT);
+
 	swdt_disable();
 	gicv2_cpuif_disable();
 

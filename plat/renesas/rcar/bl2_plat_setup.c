@@ -4,18 +4,21 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <desc_image_load.h>
-#include <arch_helpers.h>
-#include <bl_common.h>
-#include <bl1.h>
-#include <console.h>
-#include <debug.h>
-#include <libfdt.h>
-#include <mmio.h>
-#include <platform.h>
-#include <platform_def.h>
 #include <string.h>
-#include <xlat_tables_defs.h>
+
+#include <libfdt.h>
+
+#include <platform_def.h>
+
+#include <arch_helpers.h>
+#include <bl1/bl1.h>
+#include <common/bl_common.h>
+#include <common/debug.h>
+#include <common/desc_image_load.h>
+#include <drivers/console.h>
+#include <lib/mmio.h>
+#include <lib/xlat_tables/xlat_tables_defs.h>
+#include <plat/common/platform.h>
 
 #include "avs_driver.h"
 #include "boot_init_dram.h"
@@ -58,6 +61,8 @@ extern void rcar_rpc_init(void);
 extern void rcar_pfc_init(void);
 extern void rcar_dma_init(void);
 
+static void bl2_init_generic_timer(void);
+
 /* R-Car Gen3 product check */
 #if (RCAR_LSI == RCAR_H3) || (RCAR_LSI == RCAR_H3N)
 #define TARGET_PRODUCT			RCAR_PRODUCT_H3
@@ -68,9 +73,17 @@ extern void rcar_dma_init(void);
 #elif RCAR_LSI == RCAR_M3N
 #define TARGET_PRODUCT			RCAR_PRODUCT_M3N
 #define TARGET_NAME			"R-Car M3N"
+#elif RCAR_LSI == RCAR_V3M
+#define TARGET_PRODUCT			RCAR_PRODUCT_V3M
+#define TARGET_NAME			"R-Car V3M"
 #elif RCAR_LSI == RCAR_E3
 #define TARGET_PRODUCT			RCAR_PRODUCT_E3
 #define TARGET_NAME			"R-Car E3"
+#elif RCAR_LSI == RCAR_D3
+#define TARGET_PRODUCT			RCAR_PRODUCT_D3
+#define TARGET_NAME			"R-Car D3"
+#elif RCAR_LSI == RCAR_AUTO
+#define TARGET_NAME			"R-Car H3/M3/M3N/V3M"
 #endif
 
 #if (RCAR_LSI == RCAR_E3)
@@ -229,10 +242,13 @@ void bl2_plat_flush_bl31_params(void)
 	product = reg & RCAR_PRODUCT_MASK;
 	cut = reg & RCAR_CUT_MASK;
 
-	if (product == RCAR_PRODUCT_M3)
+	if (product == RCAR_PRODUCT_M3 && RCAR_CUT_VER30 > cut)
 		goto tlb;
 
 	if (product == RCAR_PRODUCT_H3 && RCAR_CUT_VER20 > cut)
+		goto tlb;
+
+	if (product == RCAR_PRODUCT_D3)
 		goto tlb;
 
 	/* Disable MFIS write protection */
@@ -256,8 +272,10 @@ tlb:
 		   product_cut == (RCAR_PRODUCT_M3N | RCAR_CUT_VER11)) {
 		mmio_write_32(IPMMUVI0_IMSCTLR, IMSCTLR_DISCACHE);
 		mmio_write_32(IPMMUPV0_IMSCTLR, IMSCTLR_DISCACHE);
-	} else if (product_cut == (RCAR_PRODUCT_E3 | RCAR_CUT_VER10)) {
+	} else if ((product_cut == (RCAR_PRODUCT_E3 | RCAR_CUT_VER10)) ||
+		   (product_cut == (RCAR_PRODUCT_E3 | RCAR_CUT_VER11))) {
 		mmio_write_32(IPMMUVI0_IMSCTLR, IMSCTLR_DISCACHE);
+		mmio_write_32(IPMMUVP0_IMSCTLR, IMSCTLR_DISCACHE);
 		mmio_write_32(IPMMUPV0_IMSCTLR, IMSCTLR_DISCACHE);
 	}
 
@@ -385,7 +403,7 @@ int bl2_plat_handle_post_image_load(unsigned int image_id)
 	return 0;
 }
 
-meminfo_t *bl2_plat_sec_mem_layout(void)
+struct meminfo *bl2_plat_sec_mem_layout(void)
 {
 	return &bl2_tzram_layout;
 }
@@ -416,10 +434,18 @@ static void bl2_populate_compatible_string(void *fdt)
 		ret = fdt_setprop_string(fdt, 0, "compatible",
 					 "renesas,h3ulcb");
 		break;
+	case BOARD_EAGLE:
+		ret = fdt_setprop_string(fdt, 0, "compatible",
+					 "renesas,eagle");
+		break;
 	case BOARD_EBISU:
 	case BOARD_EBISU_4D:
 		ret = fdt_setprop_string(fdt, 0, "compatible",
 					 "renesas,ebisu");
+		break;
+	case BOARD_DRAAK:
+		ret = fdt_setprop_string(fdt, 0, "compatible",
+					 "renesas,draak");
 		break;
 	default:
 		NOTICE("BL2: Cannot set compatible string, board unsupported\n");
@@ -445,9 +471,17 @@ static void bl2_populate_compatible_string(void *fdt)
 		ret = fdt_appendprop_string(fdt, 0, "compatible",
 					    "renesas,r8a77965");
 		break;
+	case RCAR_PRODUCT_V3M:
+		ret = fdt_appendprop_string(fdt, 0, "compatible",
+					    "renesas,r8a77970");
+		break;
 	case RCAR_PRODUCT_E3:
 		ret = fdt_appendprop_string(fdt, 0, "compatible",
 					    "renesas,r8a77990");
+		break;
+	case RCAR_PRODUCT_D3:
+		ret = fdt_appendprop_string(fdt, 0, "compatible",
+					    "renesas,r8a77995");
 		break;
 	default:
 		NOTICE("BL2: Cannot set compatible string, SoC unsupported\n");
@@ -473,8 +507,10 @@ static void bl2_advertise_dram_entries(uint64_t dram_config[8])
 		if (!size)
 			continue;
 
-		NOTICE("BL2: CH%d: %llx - %llx, %lld GiB\n",
-			chan, start, start + size - 1, size >> 30);
+		NOTICE("BL2: CH%d: %llx - %llx, %lld %siB\n",
+			chan, start, start + size - 1,
+			(size >> 30) ? : size >> 20,
+			(size >> 30) ? "G" : "M");
 	}
 
 	/*
@@ -559,14 +595,25 @@ static void bl2_advertise_dram_size(uint32_t product)
 		break;
 
 	case RCAR_PRODUCT_M3:
+#if (RCAR_GEN3_ULCB == 1)
+		/* 2GB(1GBx2 2ch split) */
+		dram_config[1] = 0x40000000ULL;
+		dram_config[5] = 0x40000000ULL;
+#else
 		/* 4GB(2GBx2 2ch split) */
 		dram_config[1] = 0x80000000ULL;
 		dram_config[5] = 0x80000000ULL;
+#endif
 		break;
 
 	case RCAR_PRODUCT_M3N:
 		/* 2GB(1GBx2) */
 		dram_config[1] = 0x80000000ULL;
+		break;
+
+	case RCAR_PRODUCT_V3M:
+		/* 1GB(512MBx2) */
+		dram_config[1] = 0x40000000ULL;
 		break;
 
 	case RCAR_PRODUCT_E3:
@@ -580,6 +627,11 @@ static void bl2_advertise_dram_size(uint32_t product)
 		/* 4GB(1GBx4) */
 		dram_config[1] = 0x100000000ULL;
 #endif /* RCAR_DRAM_DDR3L_MEMCONF == 0 */
+		break;
+
+	case RCAR_PRODUCT_D3:
+		/* 512MB */
+		dram_config[1] = 0x20000000ULL;
 		break;
 	}
 
@@ -600,6 +652,8 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 	const char *product_h3 = "H3";
 	const char *product_m3 = "M3";
 	const char *product_e3 = "E3";
+	const char *product_d3 = "D3";
+	const char *product_v3m = "V3M";
 	const char *lcs_secure = "SE";
 	const char *lcs_cm = "CM";
 	const char *lcs_dm = "DM";
@@ -612,7 +666,7 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 	const char *boot_qspi80 = "QSPI Flash(80MHz)";
 	const char *boot_emmc25x1 = "eMMC(25MHz x1)";
 	const char *boot_emmc50x8 = "eMMC(50MHz x8)";
-#if RCAR_LSI == RCAR_E3
+#if (RCAR_LSI == RCAR_E3) || (RCAR_LSI == RCAR_D3)
 	const char *boot_hyper160 = "HyperFlash(150MHz)";
 #else
 	const char *boot_hyper160 = "HyperFlash(160MHz)";
@@ -620,6 +674,8 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 #if (RCAR_LOSSY_ENABLE == 1)
 	int fcnlnode;
 #endif
+
+	bl2_init_generic_timer();
 
 	reg = mmio_read_32(RCAR_MODEMR);
 	boot_dev = reg & MODEMR_BOOT_DEV_MASK;
@@ -674,16 +730,31 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 	case RCAR_PRODUCT_M3N:
 		str = product_m3n;
 		break;
+	case RCAR_PRODUCT_V3M:
+		str = product_v3m;
+		break;
 	case RCAR_PRODUCT_E3:
 		str = product_e3;
+		break;
+	case RCAR_PRODUCT_D3:
+		str = product_d3;
 		break;
 	default:
 		str = unknown;
 		break;
 	}
 
-	if (RCAR_PRODUCT_M3_CUT11 == product_cut) {
-		NOTICE("BL2: PRR is R-Car %s Ver.1.1 / Ver.1.2\n", str);
+	if ((RCAR_PRODUCT_M3 == product) &&
+	    (RCAR_CUT_VER20 == (reg & RCAR_MAJOR_MASK))) {
+		if (RCAR_M3_CUT_VER11 == (reg & RCAR_CUT_MASK)) {
+			/* M3 Ver.1.1 or Ver.1.2 */
+			NOTICE("BL2: PRR is R-Car %s Ver.1.1 / Ver.1.2\n",
+				str);
+		} else {
+			NOTICE("BL2: PRR is R-Car %s Ver.1.%d\n",
+				str,
+				(reg & RCAR_MINOR_MASK) + RCAR_M3_MINOR_OFFSET);
+		}
 	} else {
 		major = (reg & RCAR_MAJOR_MASK) >> RCAR_MAJOR_SHIFT;
 		major = major + RCAR_MAJOR_OFFSET;
@@ -708,6 +779,8 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 	case BOARD_EBISU:
 	case BOARD_STARTER_KIT_PRE:
 	case BOARD_EBISU_4D:
+	case BOARD_DRAAK:
+	case BOARD_EAGLE:
 		break;
 	default:
 		type = BOARD_UNKNOWN;
@@ -746,9 +819,17 @@ void bl2_el3_early_platform_setup(u_register_t arg1, u_register_t arg2,
 		str = boot_qspi80;
 		break;
 	case MODEMR_BOOT_DEV_EMMC_25X1:
+#if RCAR_LSI == RCAR_D3
+		ERROR("BL2: Failed to Initialize. eMMC is not supported.\n");
+		panic();
+#endif
 		str = boot_emmc25x1;
 		break;
 	case MODEMR_BOOT_DEV_EMMC_50X8:
+#if RCAR_LSI == RCAR_D3
+		ERROR("BL2: Failed to Initialize. eMMC is not supported.\n");
+		panic();
+#endif
 		str = boot_emmc50x8;
 		break;
 	default:
@@ -896,7 +977,7 @@ void bl2_el3_plat_arch_setup(void)
 #if RCAR_BL2_DCACHE == 1
 	NOTICE("BL2: D-Cache enable\n");
 	rcar_configure_mmu_el3(BL2_BASE,
-			       RCAR_SYSRAM_LIMIT - BL2_BASE,
+			       BL2_END - BL2_BASE,
 			       BL2_RO_BASE, BL2_RO_LIMIT
 #if USE_COHERENT_MEM
 			       , BL2_COHERENT_RAM_BASE, BL2_COHERENT_RAM_LIMIT
@@ -908,4 +989,56 @@ void bl2_el3_plat_arch_setup(void)
 void bl2_platform_setup(void)
 {
 
+}
+
+static void bl2_init_generic_timer(void)
+{
+/* FIXME: V3M 16.666 MHz ? */
+#if RCAR_LSI == RCAR_D3
+	uint32_t reg_cntfid = EXTAL_DRAAK;
+#elif RCAR_LSI == RCAR_E3
+	uint32_t reg_cntfid = EXTAL_EBISU;
+#else /* RCAR_LSI == RCAR_E3 */
+	uint32_t reg;
+	uint32_t reg_cntfid;
+	uint32_t modemr;
+	uint32_t modemr_pll;
+	uint32_t board_type;
+	uint32_t board_rev;
+	uint32_t pll_table[] = {
+		EXTAL_MD14_MD13_TYPE_0,	/* MD14/MD13 : 0b00 */
+		EXTAL_MD14_MD13_TYPE_1,	/* MD14/MD13 : 0b01 */
+		EXTAL_MD14_MD13_TYPE_2,	/* MD14/MD13 : 0b10 */
+		EXTAL_MD14_MD13_TYPE_3	/* MD14/MD13 : 0b11 */
+	};
+
+	modemr = mmio_read_32(RCAR_MODEMR);
+	modemr_pll = (modemr & MODEMR_BOOT_PLL_MASK);
+
+	/* Set frequency data in CNTFID0 */
+	reg_cntfid = pll_table[modemr_pll >> MODEMR_BOOT_PLL_SHIFT];
+	reg = mmio_read_32(RCAR_PRR) & (RCAR_PRODUCT_MASK | RCAR_CUT_MASK);
+	switch (modemr_pll) {
+	case MD14_MD13_TYPE_0:
+		rcar_get_board_type(&board_type, &board_rev);
+		if (BOARD_SALVATOR_XS == board_type) {
+			reg_cntfid = EXTAL_SALVATOR_XS;
+		}
+		break;
+	case MD14_MD13_TYPE_3:
+		if (RCAR_PRODUCT_H3_CUT10 == reg) {
+			reg_cntfid = reg_cntfid >> 1U;
+		}
+		break;
+	default:
+		/* none */
+		break;
+	}
+#endif /* RCAR_LSI == RCAR_E3 */
+	/* Update memory mapped and register based freqency */
+	write_cntfrq_el0((u_register_t )reg_cntfid);
+	mmio_write_32(ARM_SYS_CNTCTL_BASE + (uintptr_t)CNTFID_OFF, reg_cntfid);
+	/* Enable counter */
+	mmio_setbits_32(RCAR_CNTC_BASE + (uintptr_t)CNTCR_OFF,
+			(uint32_t)CNTCR_EN);
 }

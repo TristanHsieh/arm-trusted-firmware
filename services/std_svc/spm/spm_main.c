@@ -1,26 +1,28 @@
 /*
- * Copyright (c) 2017-2018, ARM Limited and Contributors. All rights reserved.
+ * Copyright (c) 2017-2019, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <arch_helpers.h>
 #include <assert.h>
-#include <bl31.h>
-#include <context_mgmt.h>
-#include <debug.h>
-#include <ehf.h>
 #include <errno.h>
-#include <interrupt_mgmt.h>
-#include <platform.h>
-#include <runtime_svc.h>
-#include <smccc.h>
-#include <smccc_helpers.h>
-#include <spinlock.h>
 #include <string.h>
-#include <sprt_svc.h>
-#include <utils.h>
-#include <xlat_tables_v2.h>
+
+#include <arch_helpers.h>
+#include <bl31/bl31.h>
+#include <bl31/ehf.h>
+#include <bl31/interrupt_mgmt.h>
+#include <common/debug.h>
+#include <common/runtime_svc.h>
+#include <lib/el3_runtime/context_mgmt.h>
+#include <lib/smccc.h>
+#include <lib/spinlock.h>
+#include <lib/utils.h>
+#include <lib/xlat_tables/xlat_tables_v2.h>
+#include <plat/common/platform.h>
+#include <services/spm_svc.h>
+#include <services/sprt_svc.h>
+#include <smccc_helpers.h>
 
 #include "spm_private.h"
 
@@ -102,7 +104,7 @@ sp_context_t *spm_sp_get_by_uuid(const uint32_t (*svc_uuid)[4])
 		     rdsvc = rdsvc->next) {
 			uint32_t *rd_uuid = (uint32_t *)(rdsvc->uuid);
 
-			if (memcmp(rd_uuid, svc_uuid, sizeof(rd_uuid)) == 0) {
+			if (memcmp(rd_uuid, svc_uuid, sizeof(*svc_uuid)) == 0) {
 				return sp_ctx;
 			}
 		}
@@ -298,6 +300,9 @@ int32_t spm_setup(void)
 		panic();
 	}
 
+	/* Setup shim layer */
+	spm_exceptions_xlat_init_context();
+
 	/*
 	 * Setup all Secure Partitions.
 	 */
@@ -322,9 +327,6 @@ int32_t spm_setup(void)
 
 		/* Initialize context of the SP */
 		INFO("Secure Partition %u context setup start...\n", i);
-
-		/* Assign translation tables context. */
-		ctx->xlat_ctx_handle = spm_sp_xlat_context_alloc();
 
 		/* Save location of the image in physical memory */
 		ctx->image_base = (uintptr_t)sp_base;

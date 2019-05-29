@@ -1,20 +1,22 @@
 /*
- * Copyright (c) 2018, Arm Limited. All rights reserved.
+ * Copyright (c) 2018-2019, Arm Limited. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <arch_helpers.h>
 #include <assert.h>
-#include <context_mgmt.h>
-#include <debug.h>
 #include <errno.h>
 #include <limits.h>
-#include <platform.h>
-#include <smccc.h>
+
+#include <arch_helpers.h>
+#include <common/debug.h>
+#include <common/runtime_svc.h>
+#include <lib/el3_runtime/context_mgmt.h>
+#include <lib/smccc.h>
+#include <lib/utils.h>
+#include <plat/common/platform.h>
+#include <services/sprt_svc.h>
 #include <smccc_helpers.h>
-#include <sprt_svc.h>
-#include <utils.h>
 
 #include "spm_private.h"
 
@@ -153,9 +155,10 @@ static int32_t sprt_memory_perm_attr_set(sp_context_t *sp_ctx,
 /*******************************************************************************
  * This function handles all SMCs in the range reserved for SPRT.
  ******************************************************************************/
-uint64_t sprt_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
-			  uint64_t x3, uint64_t x4, void *cookie, void *handle,
-			  uint64_t flags)
+static uintptr_t sprt_smc_handler(uint32_t smc_fid, u_register_t x1,
+				  u_register_t x2, u_register_t x3,
+				  u_register_t x4, void *cookie, void *handle,
+				  u_register_t flags)
 {
 	/* SPRT only supported from the Secure world */
 	if (is_caller_non_secure(flags) == SMC_FROM_NON_SECURE) {
@@ -175,14 +178,6 @@ uint64_t sprt_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 		SMC_RET1(handle, SPRT_VERSION_COMPILED);
 
 	case SPRT_PUT_RESPONSE_AARCH64:
-		/*
-		 * Registers x1-x3 aren't saved by default to the context,
-		 * but they are needed after spm_sp_synchronous_exit() because
-		 * they hold return values.
-		 */
-		SMC_SET_GP(handle, CTX_GPREG_X1, x1);
-		SMC_SET_GP(handle, CTX_GPREG_X2, x2);
-		SMC_SET_GP(handle, CTX_GPREG_X3, x3);
 		spm_sp_synchronous_exit(SPRT_PUT_RESPONSE_AARCH64);
 
 	case SPRT_YIELD_AARCH64:
@@ -213,3 +208,12 @@ uint64_t sprt_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 	WARN("SPRT: Unsupported call 0x%08x\n", smc_fid);
 	SMC_RET1(handle, SPRT_NOT_SUPPORTED);
 }
+
+DECLARE_RT_SVC(
+	sprt_handler,
+	OEN_SPRT_START,
+	OEN_SPRT_END,
+	SMC_TYPE_FAST,
+	NULL,
+	sprt_smc_handler
+);

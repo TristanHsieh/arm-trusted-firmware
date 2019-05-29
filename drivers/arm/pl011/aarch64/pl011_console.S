@@ -6,9 +6,8 @@
 #include <arch.h>
 #include <asm_macros.S>
 #include <assert_macros.S>
-#define USE_FINISH_CONSOLE_REG_2
 #include <console_macros.S>
-#include <pl011.h>
+#include <drivers/arm/pl011.h>
 
 #if !MULTI_CONSOLE_API
 /*

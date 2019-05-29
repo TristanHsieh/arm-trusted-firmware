@@ -34,6 +34,14 @@ Amlogic Meson S905 (GXBB) platform port
 :F: drivers/meson/
 :F: plat/meson/gxbb/
 
+Amlogic Meson S905x (GXL) platform port
+---------------------------------------
+:M: Remi Pommarel <repk@triplefau.lt>
+:G: `remi-triplefault`_
+:F: docs/plat/meson-gxl.rst
+:F: drivers/meson/gxl
+:F: plat/meson/gxl/
+
 Armv7-A architecture port
 -------------------------
 :M: Etienne Carriere <etienne.carriere@linaro.org>
@@ -43,6 +51,8 @@ Arm System Guidance for Infrastructure / Mobile FVP platforms
 -------------------------------------------------------------
 :M: Nariman Poushin <nariman.poushin@linaro.org>
 :G: `npoushin`_
+:M: Thomas Abraham <thomas.abraham@arm.com>
+:G: `thomas-arm`_
 :F: plat/arm/css/sgi/
 :F: plat/arm/css/sgm/
 :F: plat/arm/board/sgi575/
@@ -93,6 +103,12 @@ HiSilicon Poplar platform port
 :F: docs/plat/poplar.rst
 :F: plat/hisilicon/poplar/
 
+Intel SocFPGA platform ports
+----------------------------
+:M: Tien Hock Loh <tien.hock.loh@intel.com>
+:G: `thloh85-intel`
+:F: plat/intel/soc
+
 MediaTek platform ports
 -----------------------
 :M: Yidi Lin (林以廸) <yidi.lin@mediatek.com>
@@ -103,7 +119,7 @@ Marvell platform ports and SoC drivers
 --------------------------------------
 :M: Konstantin Porotchkin <kostap@marvell.com>
 :G: `kostapr`_
-:F: docs/plat/marvell/
+:F: docs/marvell/
 :F: plat/marvell/
 :F: drivers/marvell/
 :F: tools/marvell/
@@ -144,6 +160,13 @@ NXP i.MX 8 platform port
 :F: docs/plat/imx8.rst
 :F: plat/imx/
 
+NXP i.MX8M platform port
+------------------------
+:M: Jacky Bai <ping.bai@nxp.com>
+:G: `JackyBai`_
+:F: doc/plat/imx8m.rst
+:F: plat/imx/imx8m/
+
 OP-TEE dispatcher
 -----------------
 :M: Jens Wiklander <jens.wiklander@linaro.org>
@@ -162,13 +185,19 @@ Raspberry Pi 3 platform port
 ----------------------------
 :M: Antonio Niño Díaz <antonio.ninodiaz@arm.com>
 :G: `antonio-nino-diaz-arm`_
+:M: Ying-Chun Liu (PaulLiu) <paul.liu@linaro.org>
+:G: `grandpaul`_
 :F: docs/plat/rpi3.rst
 :F: plat/rpi3/
+:F: drivers/rpi3/
+:F: include/drivers/rpi3/
 
 Renesas rcar-gen3 platform port
 -------------------------------
 :M: Jorge Ramirez-Ortiz  <jramirez@baylibre.com>
 :G: `ldts`_
+:M: Marek Vasut <marek.vasut@gmail.com>
+:G: `marex`_
 :F: docs/plat/rcar-gen3.rst
 :F: plat/renesas/rcar
 :F: drivers/renesas/rcar
@@ -241,19 +270,25 @@ Xilinx platform port
 .. _etienne-lms: https://github.com/etienne-lms
 .. _glneo: https://github.com/glneo
 .. _hzhuang1: https://github.com/hzhuang1
+.. _JackyBai: https://github.com/JackyBai
 .. _jenswi-linaro: https://github.com/jenswi-linaro
 .. _ldts: https://github.com/ldts
+.. _marex: https://github.com/marex
 .. _niej: https://github.com/niej
 .. _kostapr: https://github.com/kostapr
 .. _masahir0y: https://github.com/masahir0y
 .. _mtk09422: https://github.com/mtk09422
 .. _npoushin: https://github.com/npoushin
 .. _qoriq-open-source: https://github.com/qoriq-open-source
+.. _remi-triplefault: https://github.com/repk
 .. _rockchip-linux: https://github.com/rockchip-linux
 .. _shawnguo2: https://github.com/shawnguo2
 .. _sivadur: https://github.com/sivadur
 .. _smaeul: https://github.com/smaeul
 .. _soby-mathew: https://github.com/soby-mathew
+.. _thomas-arm: https://github.com/thomas-arm
 .. _TonyXie06: https://github.com/TonyXie06
 .. _vwadekar: https://github.com/vwadekar
 .. _Yann-lms: https://github.com/Yann-lms
+.. _grandpaul: https://github.com/grandpaul
+.. _jwerner-chromium: https://github.com/jwerner-chromium

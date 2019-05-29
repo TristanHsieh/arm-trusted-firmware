@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2013-2018, ARM Limited and Contributors. All rights reserved.
+ * Copyright (c) 2013-2019, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <platform_def.h>
-#include <xlat_tables_defs.h>
+
+#include <lib/xlat_tables/xlat_tables_defs.h>
 
 OUTPUT_FORMAT(PLATFORM_LINKER_FORMAT)
 OUTPUT_ARCH(PLATFORM_LINKER_ARCH)
@@ -77,7 +78,7 @@ SECTIONS
 
         /* Place pubsub sections for events */
         . = ALIGN(8);
-#include <pubsub_events.h>
+#include <lib/el3_runtime/pubsub_events.h>
 
         . = ALIGN(PAGE_SIZE);
         __RODATA_END__ = .;
@@ -124,7 +125,7 @@ SECTIONS
 
         /* Place pubsub sections for events */
         . = ALIGN(8);
-#include <pubsub_events.h>
+#include <lib/el3_runtime/pubsub_events.h>
 
         *(.vectors)
         __RO_END_UNALIGNED__ = .;
@@ -142,6 +143,10 @@ SECTIONS
            "cpu_ops not defined for this platform.")
 
 #if ENABLE_SPM
+#ifndef SPM_SHIM_EXCEPTIONS_VMA
+#define SPM_SHIM_EXCEPTIONS_VMA         RAM
+#endif
+
     /*
      * Exception vectors of the SPM shim layer. They must be aligned to a 2K
      * address, but we need to place them in a separate page so that we can set
@@ -155,7 +160,10 @@ SECTIONS
         *(.spm_shim_exceptions)
         . = ALIGN(PAGE_SIZE);
         __SPM_SHIM_EXCEPTIONS_END__ = .;
-    } >RAM
+    } >SPM_SHIM_EXCEPTIONS_VMA AT>RAM
+
+    PROVIDE(__SPM_SHIM_EXCEPTIONS_LMA__ = LOADADDR(spm_shim_exceptions));
+    . = LOADADDR(spm_shim_exceptions) + SIZEOF(spm_shim_exceptions);
 #endif
 
     /*
@@ -216,9 +224,11 @@ SECTIONS
          */
         . = ALIGN(CACHE_WRITEBACK_GRANULE);
         __BAKERY_LOCK_START__ = .;
+        __PERCPU_BAKERY_LOCK_START__ = .;
         *(bakery_lock)
         . = ALIGN(CACHE_WRITEBACK_GRANULE);
-        __PERCPU_BAKERY_LOCK_SIZE__ = ABSOLUTE(. - __BAKERY_LOCK_START__);
+        __PERCPU_BAKERY_LOCK_END__ = .;
+        __PERCPU_BAKERY_LOCK_SIZE__ = ABSOLUTE(__PERCPU_BAKERY_LOCK_END__ - __PERCPU_BAKERY_LOCK_START__);
         . = . + (__PERCPU_BAKERY_LOCK_SIZE__ * (PLATFORM_CORE_COUNT - 1));
         __BAKERY_LOCK_END__ = .;
 
@@ -239,7 +249,7 @@ SECTIONS
          * Time-stamps are stored in normal .bss memory
          *
          * The compiler will allocate enough memory for one CPU's time-stamps,
-         * the remaining memory for other CPU's is allocated by the
+         * the remaining memory for other CPUs is allocated by the
          * linker script
          */
         . = ALIGN(CACHE_WRITEBACK_GRANULE);

@@ -7,8 +7,8 @@
 #ifndef TZC380_H
 #define TZC380_H
 
-#include <tzc_common.h>
-#include <utils_def.h>
+#include <drivers/arm/tzc_common.h>
+#include <lib/utils_def.h>
 
 #define TZC380_CONFIGURATION_OFF	U(0x000)
 #define ACTION_OFF			U(0x004)
@@ -138,7 +138,7 @@ void tzc380_init(uintptr_t base);
 void tzc380_configure_region(uint8_t region,
 			     uintptr_t region_base,
 			     unsigned int attr);
-void tzc380_set_action(tzc_action_t action);
+void tzc380_set_action(unsigned int action);
 static inline void tzc_init(uintptr_t base)
 {
 	tzc380_init(base);
@@ -151,7 +151,7 @@ static inline void tzc_configure_region(uint8_t region,
 	tzc380_configure_region(region, region_base, attr);
 }
 
-static inline void tzc_set_action(tzc_action_t action)
+static inline void tzc_set_action(unsigned int action)
 {
 	tzc380_set_action(action);
 }

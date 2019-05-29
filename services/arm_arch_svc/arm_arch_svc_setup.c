@@ -1,17 +1,17 @@
 /*
- * Copyright (c) 2018, ARM Limited and Contributors. All rights reserved.
+ * Copyright (c) 2018-2019, ARM Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <arm_arch_svc.h>
-#include <debug.h>
-#include <errata_report.h>
-#include <runtime_svc.h>
-#include <smccc.h>
+#include <common/debug.h>
+#include <common/runtime_svc.h>
+#include <lib/cpus/errata_report.h>
+#include <lib/cpus/wa_cve_2017_5715.h>
+#include <lib/cpus/wa_cve_2018_3639.h>
+#include <lib/smccc.h>
+#include <services/arm_arch_svc.h>
 #include <smccc_helpers.h>
-#include <wa_cve_2017_5715.h>
-#include <wa_cve_2018_3639.h>
 
 static int32_t smccc_version(void)
 {
@@ -41,7 +41,7 @@ static int32_t smccc_arch_features(u_register_t arg)
 		 * PE implements architectural Speculation Store Bypass Safe
 		 * (SSBS) feature.
 		 */
-		ssbs = (read_id_aa64pfr0_el1() >> ID_AA64PFR1_EL1_SSBS_SHIFT) &
+		ssbs = (read_id_aa64pfr1_el1() >> ID_AA64PFR1_EL1_SSBS_SHIFT) &
 			ID_AA64PFR1_EL1_SSBS_MASK;
 
 		/*
